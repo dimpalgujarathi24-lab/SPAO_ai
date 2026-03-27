@@ -1,0 +1,210 @@
+{
+  "meta": {
+    "source": "Shark Tank India Season 1",
+    "total_entries": 20,
+    "currency": "INR",
+    "version": "1.0"
+  },
+  "startups": [
+    {
+      "startup_name": "FitBite",
+      "industry": "HealthTech",
+      "revenue": 1200000,
+      "funding_asked": 500000,
+      "equity": 15,
+      "deal_status": "Deal",
+      "shark": "Namita Thapar",
+      "description": "AI nutrition tracking app"
+    },
+    {
+      "startup_name": "EduSpark",
+      "industry": "EdTech",
+      "revenue": 800000,
+      "funding_asked": 300000,
+      "equity": 20,
+      "deal_status": "No Deal",
+      "shark": "None",
+      "description": "Online coding school for kids"
+    },
+    {
+      "startup_name": "GreenHarvest",
+      "industry": "AgriTech",
+      "revenue": 2500000,
+      "funding_asked": 1000000,
+      "equity": 10,
+      "deal_status": "Deal",
+      "shark": "Anupam Mittal",
+      "description": "Farm to fork organic produce"
+    },
+    {
+      "startup_name": "PetPal",
+      "industry": "PetCare",
+      "revenue": 450000,
+      "funding_asked": 200000,
+      "equity": 25,
+      "deal_status": "Conditional Deal",
+      "shark": "Vineeta Singh",
+      "description": "Premium pet food subscription"
+    },
+    {
+      "startup_name": "QuickFix",
+      "industry": "HomeServices",
+      "revenue": 3200000,
+      "funding_asked": 800000,
+      "equity": 12,
+      "deal_status": "Deal",
+      "shark": "Aman Gupta",
+      "description": "On-demand home repair platform"
+    },
+    {
+      "startup_name": "MediScan",
+      "industry": "HealthTech",
+      "revenue": 950000,
+      "funding_asked": 600000,
+      "equity": 18,
+      "deal_status": "Conditional Deal",
+      "shark": "Namita Thapar",
+      "description": "AI diagnostics for tier-2 cities"
+    },
+    {
+      "startup_name": "UrbanFarm",
+      "industry": "FoodTech",
+      "revenue": 1800000,
+      "funding_asked": 700000,
+      "equity": 15,
+      "deal_status": "Deal",
+      "shark": "Vineeta Singh",
+      "description": "Rooftop farming as a service"
+    },
+    {
+      "startup_name": "CodeKids",
+      "industry": "EdTech",
+      "revenue": 320000,
+      "funding_asked": 150000,
+      "equity": 30,
+      "deal_status": "No Deal",
+      "shark": "None",
+      "description": "Coding bootcamps for children"
+    },
+    {
+      "startup_name": "EcoWear",
+      "industry": "Fashion",
+      "revenue": 1100000,
+      "funding_asked": 400000,
+      "equity": 20,
+      "deal_status": "Conditional Deal",
+      "shark": "Ashneer Grover",
+      "description": "Sustainable clothing brand"
+    },
+    {
+      "startup_name": "DriveEasy",
+      "industry": "Mobility",
+      "revenue": 2800000,
+      "funding_asked": 1200000,
+      "equity": 8,
+      "deal_status": "Deal",
+      "shark": "Aman Gupta",
+      "description": "EV ride sharing for last mile"
+    },
+    {
+      "startup_name": "CloudStore",
+      "industry": "SaaS",
+      "revenue": 4200000,
+      "funding_asked": 2000000,
+      "equity": 10,
+      "deal_status": "Deal",
+      "shark": "Anupam Mittal",
+      "description": "Cloud storage for SMEs"
+    },
+    {
+      "startup_name": "NutriBox",
+      "industry": "FoodTech",
+      "revenue": 650000,
+      "funding_asked": 250000,
+      "equity": 22,
+      "deal_status": "No Deal",
+      "shark": "None",
+      "description": "Healthy meal kit delivery"
+    },
+    {
+      "startup_name": "SafeHome",
+      "industry": "Security",
+      "revenue": 1950000,
+      "funding_asked": 900000,
+      "equity": 14,
+      "deal_status": "Deal",
+      "shark": "Ashneer Grover",
+      "description": "Smart home security systems"
+    },
+    {
+      "startup_name": "TravelMate",
+      "industry": "Travel",
+      "revenue": 500000,
+      "funding_asked": 300000,
+      "equity": 28,
+      "deal_status": "No Deal",
+      "shark": "None",
+      "description": "Budget travel planning app"
+    },
+    {
+      "startup_name": "BizBot",
+      "industry": "AI",
+      "revenue": 3500000,
+      "funding_asked": 1500000,
+      "equity": 12,
+      "deal_status": "Deal",
+      "shark": "Peyush Bansal",
+      "description": "AI automation for SME finance"
+    },
+    {
+      "startup_name": "SkillUp",
+      "industry": "EdTech",
+      "revenue": 1400000,
+      "funding_asked": 600000,
+      "equity": 18,
+      "deal_status": "Conditional Deal",
+      "shark": "Namita Thapar",
+      "description": "Vernacular skill training platform"
+    },
+    {
+      "startup_name": "FreshCart",
+      "industry": "Grocery",
+      "revenue": 2200000,
+      "funding_asked": 1000000,
+      "equity": 15,
+      "deal_status": "Deal",
+      "shark": "Vineeta Singh",
+      "description": "Organic grocery D2C brand"
+    },
+    {
+      "startup_name": "MindEase",
+      "industry": "MentalHealth",
+      "revenue": 780000,
+      "funding_asked": 350000,
+      "equity": 25,
+      "deal_status": "Conditional Deal",
+      "shark": "Namita Thapar",
+      "description": "Mental wellness subscription app"
+    },
+    {
+      "startup_name": "SmartSave",
+      "industry": "FinTech",
+      "revenue": 3100000,
+      "funding_asked": 1400000,
+      "equity": 11,
+      "deal_status": "Deal",
+      "shark": "Ashneer Grover",
+      "description": "Micro savings app for gig workers"
+    },
+    {
+      "startup_name": "CraftBox",
+      "industry": "Ecommerce",
+      "revenue": 890000,
+      "funding_asked": 400000,
+      "equity": 22,
+      "deal_status": "No Deal",
+      "shark": "None",
+      "description": "Handmade craft subscription box"
+    }
+  ]
+}

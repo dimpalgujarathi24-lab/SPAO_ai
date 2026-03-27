@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>SharkAI — Chat with the Sharks</title>
+  <link rel="stylesheet" href="style.css"/>
+</head>
+<body>
+
+<!-- ── SHARK SELECTOR (shown first) ────────────────────────────── -->
+<div class="selector-screen" id="selector-screen">
+  <div class="grid-overlay"></div>
+  <div class="selector-content">
+
+    <div class="logo-row">
+      <span class="logo-shark">🦈</span>
+      <h1 class="logo-text">SHARK<span class="logo-ai">AI</span></h1>
+    </div>
+    <p class="hero-tagline">CHOOSE YOUR SHARK. PITCH YOUR STARTUP.</p>
+    <div class="hero-accent-bar"></div>
+
+    <p class="selector-sub">Who do you want to pitch to?</p>
+
+    <div class="shark-cards-row">
+
+      <div class="shark-card" onclick="selectShark('ashneer')">
+        <div class="shark-card-avatar ashneer-color">AG</div>
+        <div class="shark-card-name">Ashneer Grover</div>
+        <div class="shark-card-tag">BharatPe · Brutal &amp; Direct</div>
+        <div class="shark-card-desc">
+          Expect zero mercy. He will tear your pitch apart in seconds.
+          Only strong numbers survive.
+        </div>
+        <div class="shark-card-btn">PITCH TO ASHNEER →</div>
+      </div>
+
+      <div class="shark-card shark-card-featured" onclick="selectShark('namita')">
+        <div class="shark-card-avatar namita-color">NT</div>
+        <div class="shark-card-name">Namita Thapar</div>
+        <div class="shark-card-tag">Emcure Pharma · Analytical</div>
+        <div class="shark-card-desc">
+          Data-driven and thorough. She will dig deep into your unit
+          economics and market validation.
+        </div>
+        <div class="shark-card-btn">PITCH TO NAMITA →</div>
+      </div>
+
+      <div class="shark-card" onclick="selectShark('aman')">
+        <div class="shark-card-avatar aman-color">AM</div>
+        <div class="shark-card-name">Aman Gupta</div>
+        <div class="shark-card-tag">boAt · Brand Focused</div>
+        <div class="shark-card-desc">
+          Loves D2C brands and consumer stories. Show him your brand
+          vision and he might go all in.
+        </div>
+        <div class="shark-card-btn">PITCH TO AMAN →</div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- ── CHAT SCREEN (shown after shark selected) ─────────────────── -->
+<div class="chat-screen" id="chat-screen">
+
+  <!-- Sidebar -->
+  <div class="sidebar">
+    <div class="sidebar-logo">
+      <span>🦈</span>
+      <span class="logo-text-sm">SHARK<span class="logo-ai">AI</span></span>
+    </div>
+
+    <div class="sidebar-shark-info" id="sidebar-shark-info">
+      <div class="sidebar-avatar" id="sidebar-avatar">NT</div>
+      <div class="sidebar-shark-name" id="sidebar-shark-name">Namita Thapar</div>
+      <div class="sidebar-shark-tag" id="sidebar-shark-tag">Analytical Investor</div>
+    </div>
+
+    <div class="sidebar-divider"></div>
+
+    <!-- Session stage indicator -->
+    <div class="stage-info">
+      <div class="stage-label">SESSION STAGE</div>
+      <div class="stage-value" id="stage-display">WAITING FOR PITCH</div>
+    </div>
+
+    <div class="sidebar-divider"></div>
+
+    <!-- Quick prompts -->
+    <div class="quick-prompts">
+      <div class="quick-label">QUICK ACTIONS</div>
+      <button class="quick-btn" onclick="sendQuick('Why did you give this verdict?')">
+        Why this verdict?
+      </button>
+      <button class="quick-btn" onclick="sendQuick('How can I improve my pitch?')">
+        How to improve?
+      </button>
+      <button class="quick-btn" onclick="sendQuick('I want to start a new pitch')">
+        New pitch
+      </button>
+    </div>
+
+    <div class="sidebar-divider"></div>
+
+    <!-- Change shark -->
+    <button class="btn-change-shark" onclick="changeShark()">
+      ← Change Shark
+    </button>
+  </div>
+
+  <!-- Main chat area -->
+  <div class="chat-main">
+
+    <!-- Chat header -->
+    <div class="chat-header">
+      <div class="chat-header-left">
+        <div class="chat-header-avatar" id="chat-header-avatar">NT</div>
+        <div>
+          <div class="chat-header-name" id="chat-header-name">Namita Thapar</div>
+          <div class="chat-header-status">
+            <span class="status-dot"></span>
+            <span>Live Session</span>
+          </div>
+        </div>
+      </div>
+      <div class="chat-header-right">
+        <span class="session-id-badge" id="session-badge">SESSION --</span>
+      </div>
+    </div>
+
+    <!-- Messages area -->
+    <div class="messages-area" id="messages-area">
+      <!-- Messages injected here by JS -->
+    </div>
+
+    <!-- Analysis card (injected when analysis runs) -->
+    <div class="analysis-banner" id="analysis-banner" style="display:none">
+      <div class="analysis-banner-inner">
+
+        <div class="banner-item">
+          <div class="banner-label">VERDICT</div>
+          <div class="banner-verdict" id="banner-verdict">—</div>
+        </div>
+
+        <div class="banner-item">
+          <div class="banner-label">PROBABILITY</div>
+          <div class="banner-prob" id="banner-prob">—</div>
+          <div class="banner-prob-bar">
+            <div class="banner-prob-fill" id="banner-prob-fill"></div>
+          </div>
+        </div>
+
+        <div class="banner-item">
+          <div class="banner-label">SCORE</div>
+          <div class="banner-score" id="banner-score">—</div>
+        </div>
+
+        <div class="banner-item">
+          <div class="banner-label">INDUSTRY</div>
+          <div class="banner-industry" id="banner-industry">—</div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Input area -->
+    <div class="input-area">
+      <textarea
+        id="chat-input"
+        class="chat-textarea"
+        placeholder="Type your pitch or message..."
+        rows="1"
+      ></textarea>
+      <button class="btn-send" id="btn-send" onclick="sendMessage()">
+        <span id="send-text">SEND</span>
+        <div class="spinner" id="send-spinner"></div>
+      </button>
+    </div>
+
+    <!-- Hint text -->
+    <div class="input-hint">
+      Press Enter to send · Shift+Enter for new line
+    </div>
+
+  </div>
+</div>
+
+<script src="script.js"></script>
+</body>
+</html>
