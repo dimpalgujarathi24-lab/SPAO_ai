@@ -1,0 +1,23 @@
+[
+  {
+    "startup": "Boat",
+    "sector": "electronics",
+    "revenue": "10 crore",
+    "ask": "1 crore for 2%",
+    "outcome": "deal"
+  },
+  {
+    "startup": "FoodX",
+    "sector": "food",
+    "revenue": "50 lakh",
+    "ask": "50 lakh for 10%",
+    "outcome": "no deal"
+  },
+  {
+    "startup": "FitAI",
+    "sector": "fitness",
+    "revenue": "2 crore",
+    "ask": "1 crore for 5%",
+    "outcome": "deal"
+  }
+]
