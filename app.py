@@ -1,363 +1,385 @@
-# backend/app.py
-# Chat-enabled version — remembers conversation history per session
+# app.py — SharkAI Merged Backend
+# Gemini AI + structured pitch collection + live score updates
 
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
-from ai_engine import analyze_pitch
-import uuid, re, json, os
+import uuid, os, json
+import google.generativeai as genai
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 app = Flask(__name__)
 CORS(app)
 
-# ── In-memory conversation store ──────────────────────────────────
-# Key = session_id string
-# Value = { "history": [...], "pitch_data": {...}, "stage": "..." }
-# Stage can be: "greeting" | "collecting" | "analyzing" | "followup"
+# ── Gemini setup ──────────────────────────────────────────────────
+genai.configure(api_key=os.environ.get("GEMINI_API_KEY", "AIzaSyBS_xWJR2_5tbaT-Rn5s2xY-WLmBNMm5k8"))
+gemini_model = genai.GenerativeModel("gemini-2.5-flash")
+
+# ── Load dataset ──────────────────────────────────────────────────
+DATASET_PATH = os.path.join(BASE_DIR, "dataset.json")
+DATASET = []
+if os.path.exists(DATASET_PATH):
+    with open(DATASET_PATH, "r") as f:
+        DATASET = json.load(f)
+
+# ── Serve frontend ────────────────────────────────────────────────
+@app.route("/")
+def home():
+    return send_from_directory(BASE_DIR, "index.html")
+
+@app.route("/style.css")
+def serve_css():
+    return send_from_directory(BASE_DIR, "style.css")
+
+@app.route("/script.js")
+def serve_js():
+    return send_from_directory(BASE_DIR, "script.js")
+
+# ── Sessions store ────────────────────────────────────────────────
+# Each session: { history, stage, shark, pitch_fields, scores, chat_count }
+# stage: "collecting" | "analyzing" | "followup"
+# pitch_fields collected one by one:
+#   name, sector, revenue, users, ask, equity, description
 SESSIONS = {}
+
+REQUIRED_FIELDS = ["name", "sector", "revenue", "users", "ask", "equity", "description"]
+
+FIELD_QUESTIONS = {
+    "name":        "What's the name of your startup?",
+    "sector":      "What sector or industry is it in? (e.g. FinTech, EdTech, Food, Health...)",
+    "revenue":     "What is your current monthly revenue? (Be specific — crore, lakh, etc.)",
+    "users":       "How many users or customers do you have right now?",
+    "ask":         "How much investment are you asking for?",
+    "equity":      "What percentage of equity are you offering in return?",
+    "description": "Give me your full pitch — the problem you solve, your solution, traction, and why you'll win."
+}
 
 # ── Shark personas ────────────────────────────────────────────────
 SHARK_PERSONAS = {
     "ashneer": {
         "name": "Ashneer Grover",
-        "style": "brutal",
-        "greeting": "Bhai, seedha baat kar. What is your business and why should I care?",
-        "deal_response": "Theek hai. Numbers make sense. I'm in — but I want my equity protected.",
-        "no_deal_response": "Yeh toh bahut ganda pitch tha. Completely out. Next.",
-        "conditional_response": "Idea is okay but execution is weak. Come back with better numbers.",
-        "follow_ups": [
-            "What is your monthly burn rate right now?",
-            "How many months of runway do you have left?",
-            "Why hasn't a big company already done this?",
-            "What happens to my money if this fails in 6 months?",
-        ]
+        "style": "brutal and blunt. You speak in a mix of Hindi and English (Hinglish). You are direct, no-nonsense, and tear apart weak numbers immediately. You say things like 'Bhai', 'seedha baat kar', and 'yeh toh ganda hai'. You respect hustle but despise dishonesty.",
+        "greeting": "Bhai, seedha baat kar. What is your business and why should I care? Let's not waste time.",
     },
     "namita": {
         "name": "Namita Thapar",
-        "style": "analytical",
-        "greeting": "Hello! Tell me about your startup. I want to understand the problem you are solving and your numbers.",
-        "deal_response": "I love the fundamentals here. Strong unit economics and a clear market. I would like to invest.",
-        "no_deal_response": "I appreciate your passion but the numbers don't support the valuation. Not for me.",
-        "conditional_response": "There is potential but I need clarity on your regulatory compliance and margins before I commit.",
-        "follow_ups": [
-            "What are your exact gross margins after all costs?",
-            "Have you done any clinical or third-party validation?",
-            "What is your customer acquisition cost versus lifetime value?",
-            "Walk me through your next 18-month roadmap specifically.",
-        ]
+        "style": "analytical and data-driven. You focus heavily on unit economics, margins, regulatory clarity, and market size. You are thorough and professional but warm. You always want exact numbers, not approximations.",
+        "greeting": "Hello! I'm excited to hear your pitch. Tell me — what problem are you solving and who is your customer?",
     },
     "aman": {
         "name": "Aman Gupta",
-        "style": "brand-focused",
-        "greeting": "Hey! Excited to hear your pitch. Tell me — what is your brand story and who is your customer?",
-        "deal_response": "I love the brand potential here. I can see this becoming a household name. I'm in!",
-        "no_deal_response": "The brand story isn't strong enough for me. I don't see the mass market potential.",
-        "conditional_response": "Love the energy but the brand positioning needs work. Let's talk more about your D2C strategy.",
-        "follow_ups": [
-            "What is your social media presence and organic reach like?",
-            "How are you building brand loyalty beyond the first purchase?",
-            "What is your repeat purchase rate and how do you measure brand love?",
-            "If I walked into a store, how would your product stand out on the shelf?",
-        ]
+        "style": "brand-focused and enthusiastic. You built boAt from scratch so you love D2C brands, consumer stories, social media traction, and brand differentiation. You get excited about products with mass market potential.",
+        "greeting": "Hey! Super excited to hear this. Tell me — what's your brand story and who are you building this for?",
     }
 }
 
-# ── Conversation response generator ──────────────────────────────
-def generate_chat_response(session_id, user_message):
-    """
-    Core chatbot logic. Reads conversation history,
-    figures out what stage we are at, and generates
-    the next appropriate response.
-    """
-    session   = SESSIONS.get(session_id, {})
-    history   = session.get("history", [])
-    stage     = session.get("stage", "greeting")
-    pitch_data = session.get("pitch_data", {})
-    shark_key = session.get("shark", "namita")
-    shark     = SHARK_PERSONAS[shark_key]
+# ── RAG context builder ───────────────────────────────────────────
+def build_rag_context(sector):
+    if not DATASET:
+        return ""
+    sector_lower = sector.lower()
+    relevant = [d for d in DATASET if sector_lower in d.get("sector", "").lower()]
+    if not relevant:
+        relevant = DATASET[:2]
+    context = "Past Shark Tank Cases for reference:\n"
+    for d in relevant[:2]:
+        context += f"- {d['startup']} | Sector: {d['sector']} | Revenue: {d['revenue']} | Ask: {d['ask']} | Outcome: {d['outcome']}\n"
+    return context
 
-    msg_lower = user_message.lower()
+# ── Score calculator (keyword-based, instant) ─────────────────────
+def calculate_scores(fields):
+    """Quick keyword-based scoring from collected pitch fields."""
+    import re
+    text = " ".join(str(v) for v in fields.values()).lower()
 
-    # ── Stage: greeting — first message ──────────────────────────
-    if stage == "greeting" or len(history) == 0:
-        # Check if user chose a shark
-        if "ashneer" in msg_lower:
-            shark_key = "ashneer"
-        elif "aman" in msg_lower:
-            shark_key = "aman"
-        else:
-            shark_key = "namita"
+    # Profitability: revenue signals
+    prof = 0
+    for kw in ["crore", "lakh", "million", "revenue", "profit", "sales", "mrr", "arr", "profitable"]:
+        if kw in text: prof += 5
+    for kw in ["no revenue", "pre-revenue", "zero revenue"]:
+        if kw in text: prof -= 10
+    profitability = max(0, min(25, prof))
 
-        shark = SHARK_PERSONAS[shark_key]
-        SESSIONS[session_id]["shark"]  = shark_key
-        SESSIONS[session_id]["stage"]  = "collecting"
+    # Scalability
+    scale = 0
+    for kw in ["scalable", "scale", "pan india", "global", "platform", "app", "software", "digital", "automated", "api"]:
+        if kw in text: scale += 4
+    scalability = max(0, min(25, scale))
 
-        return {
-            "message": shark["greeting"],
-            "shark":   shark["name"],
-            "stage":   "collecting",
-            "type":    "shark_message"
-        }
+    # Uniqueness
+    unique = 0
+    for kw in ["patent", "proprietary", "unique", "exclusive", "first mover", "award", "viral", "partnership"]:
+        if kw in text: unique += 5
+    uniqueness = max(0, min(25, unique))
 
-    # ── Stage: collecting — gather pitch info ─────────────────────
-    if stage == "collecting":
-        # Check if we have enough info to analyze
-        has_revenue   = any(w in msg_lower for w in ["crore","lakh","revenue","sales","million","profit"])
-        has_business  = len(user_message.split()) >= 15
-        has_ask       = any(w in msg_lower for w in ["asking","invest","equity","stake","%"])
+    # Growth
+    growth = 0
+    for kw in ["growing", "growth", "scaling", "10x", "traction", "momentum", "doubling", "month on month"]:
+        if kw in text: growth += 4
+    for kw in ["declining", "stagnant", "no growth", "flat"]:
+        if kw in text: growth -= 6
+    growth_score = max(0, min(25, growth))
 
-        if has_business and (has_revenue or has_ask):
-            # We have enough — run the AI engine
-            analysis = analyze_pitch(user_message)
-            SESSIONS[session_id]["pitch_data"] = analysis
-            SESSIONS[session_id]["stage"]      = "analyzing"
-            SESSIONS[session_id]["full_pitch"] = user_message
+    # Risk
+    risk = 0
+    for kw in ["competition", "regulated", "no patent", "debt", "loan", "seasonal", "single customer"]:
+        if kw in text: risk += 6
+    risk_score = max(0, min(25, risk))
 
-            # Build shark-style response based on decision
-            decision = analysis.get("decision", {})
-            verdict  = decision.get("decision", "NO DEAL")
-            prob     = analysis.get("investment_probability", 0)
-            scores   = analysis.get("scores", {})
+    # Revenue number bonus
+    revenue_text = fields.get("revenue", "")
+    crore_match = re.findall(r'(\d+\.?\d*)\s*(?:crore|cr\b)', revenue_text.lower())
+    if crore_match and float(crore_match[0]) >= 1:
+        profitability = min(25, profitability + 5)
 
-            if verdict == "DEAL":
-                shark_comment = shark["deal_response"]
-            elif verdict == "CONDITIONAL DEAL":
-                shark_comment = shark["conditional_response"]
-            else:
-                shark_comment = shark["no_deal_response"]
+    total = max(0, min(100, profitability + scalability + uniqueness + growth_score - risk_score))
 
-            # Pick one relevant follow-up question
-            import random
-            follow_up = random.choice(shark["follow_ups"])
+    # Investment probability
+    prob = (
+        (growth_score / 25) * 30 +
+        (profitability / 25) * 30 +
+        (scalability / 25) * 20 +
+        (uniqueness / 25) * 15 -
+        (risk_score / 25) * 20
+    )
+    probability = max(5, min(95, round(prob)))
 
-            response_text = (
-                f"{shark_comment}\n\n"
-                f"My analysis: {analysis.get('revenue_analysis','')}\n\n"
-                f"But I have one important question — {follow_up}"
-            )
-
-            return {
-                "message":     response_text,
-                "shark":       shark["name"],
-                "stage":       "analyzing",
-                "type":        "analysis",
-                "analysis":    analysis,
-                "follow_up":   follow_up
-            }
-
-        else:
-            # Need more information — ask a clarifying question
-            clarify_questions = [
-                "Interesting. But give me the numbers — what is your revenue right now?",
-                "Okay, I hear you. But what is your business model? How exactly do you make money?",
-                "Tell me more. How much are you asking for and what equity are you offering?",
-                "What problem are you solving and who is paying you for it right now?",
-            ]
-            import random
-            clarify = random.choice(clarify_questions)
-
-            return {
-                "message": clarify,
-                "shark":   shark["name"],
-                "stage":   "collecting",
-                "type":    "clarification"
-            }
-
-    # ── Stage: analyzing — handle follow-up conversation ─────────
-    if stage == "analyzing":
-        analysis = pitch_data
-        scores   = analysis.get("scores", {})
-        prob     = analysis.get("investment_probability", 0)
-        import random
-
-        # Detect what the user is responding to
-        if any(w in msg_lower for w in ["thank","thanks","okay","ok","understood","got it"]):
-            return {
-                "message": (
-                    f"Good. Now remember — {random.choice(shark['follow_ups'])} "
-                    f"These are the things that will make or break your deal. "
-                    f"Your overall score is {scores.get('total_score',0)}/100. "
-                    f"Type 'new pitch' to start over or keep asking me questions."
-                ),
-                "shark": shark["name"],
-                "stage": "followup",
-                "type":  "followup"
-            }
-
-        elif any(w in msg_lower for w in ["why","explain","reason","how","what"]):
-            # User wants explanation
-            questions = analysis.get("investor_questions", [])
-            q_text    = "\n".join(f"• {q}" for q in questions[:3])
-            return {
-                "message": (
-                    f"Here is why I gave this verdict:\n\n"
-                    f"Profitability score: {scores.get('profitability',0)}/25\n"
-                    f"Scalability score: {scores.get('scalability',0)}/25\n"
-                    f"Growth score: {scores.get('growth',0)}/25\n"
-                    f"Uniqueness score: {scores.get('uniqueness',0)}/25\n"
-                    f"Risk penalty: -{scores.get('risk_penalty',0)}/25\n\n"
-                    f"The key questions you still need to answer:\n{q_text}"
-                ),
-                "shark": shark["name"],
-                "stage": "analyzing",
-                "type":  "explanation"
-            }
-
-        elif any(w in msg_lower for w in ["new pitch","restart","start over","reset","another"]):
-            # Reset session
-            SESSIONS[session_id] = {
-                "history": [],
-                "stage":   "greeting",
-                "shark":   shark_key,
-                "pitch_data": {}
-            }
-            return {
-                "message": f"Alright, let's hear the next pitch. Go ahead — {shark['greeting']}",
-                "shark":   shark["name"],
-                "stage":   "collecting",
-                "type":    "reset"
-            }
-
-        elif any(w in msg_lower for w in ["improve","better","suggestion","advice","tip"]):
-            # User wants improvement advice
-            advice = analysis.get("pitch_score", {}).get("advice", [])
-            if not advice:
-                # Generate advice from scores
-                advice = []
-                if scores.get("profitability", 0) < 15:
-                    advice.append("Strengthen your financial story — exact revenue, margins, and burn rate.")
-                if scores.get("scalability", 0) < 15:
-                    advice.append("Show how this scales — technology, automation, or franchise model.")
-                if scores.get("uniqueness", 0) < 10:
-                    advice.append("Define your moat — patent, proprietary tech, or exclusive partnerships.")
-                if scores.get("growth", 0) < 10:
-                    advice.append("Quantify your growth — month on month numbers, not vague claims.")
-
-            advice_text = "\n".join(f"• {a}" for a in advice[:4])
-            return {
-                "message": (
-                    f"Here is how you can improve this pitch before coming back:\n\n"
-                    f"{advice_text}\n\n"
-                    f"Your current probability is {prob}%. Fix these and it could go up significantly."
-                ),
-                "shark": shark["name"],
-                "stage": "analyzing",
-                "type":  "advice"
-            }
-
-        else:
-            # General follow-up conversation
-            follow_up = random.choice(shark["follow_ups"])
-            return {
-                "message": (
-                    f"That's noted. But my biggest concern remains — {follow_up} "
-                    f"Answer that and we can talk further."
-                ),
-                "shark": shark["name"],
-                "stage": "analyzing",
-                "type":  "followup"
-            }
-
-    # Fallback
     return {
-        "message": "Tell me about your startup and I will give you my honest verdict.",
-        "shark":   shark["name"],
-        "stage":   "collecting",
-        "type":    "fallback"
+        "profitability": profitability,
+        "scalability":   scalability,
+        "uniqueness":    uniqueness,
+        "growth":        growth_score,
+        "risk_penalty":  risk_score,
+        "total_score":   total,
+        "probability":   probability
     }
+
+# ── Gemini AI call ────────────────────────────────────────────────
+def call_gemini(shark_key, fields, user_message, history, mode="chat"):
+    shark = SHARK_PERSONAS[shark_key]
+    rag_context = build_rag_context(fields.get("sector", ""))
+
+    pitch_summary = f"""
+Startup: {fields.get('name', 'Unknown')}
+Sector: {fields.get('sector', 'Unknown')}
+Monthly Revenue: {fields.get('revenue', 'Not specified')}
+Users: {fields.get('users', 'Not specified')}
+Investment Ask: {fields.get('ask', 'Not specified')}
+Equity Offered: {fields.get('equity', 'Not specified')}
+Pitch: {fields.get('description', 'Not provided')}
+"""
+
+    history_text = ""
+    for msg in history[-6:]:  # last 6 messages for context
+        role = "Investor" if msg["role"] == "assistant" else "Founder"
+        history_text += f"{role}: {msg['content']}\n"
+
+    if mode == "verdict":
+        prompt = f"""You are {shark['name']}, a Shark Tank India investor.
+Your personality: {shark['style']}
+
+{rag_context}
+
+The founder has just finished their pitch:
+{pitch_summary}
+
+Give your INITIAL VERDICT. In character as {shark['name']}:
+1. React to the pitch in your personality style (2-3 sentences)
+2. State your verdict clearly: DEAL, CONDITIONAL DEAL, or NO DEAL
+3. Give your top 2 concerns or praise points
+4. Ask ONE sharp follow-up question
+
+Keep it under 150 words. Be in character throughout."""
+
+    else:
+        prompt = f"""You are {shark['name']}, a Shark Tank India investor.
+Your personality: {shark['style']}
+
+The startup being pitched:
+{pitch_summary}
+
+Conversation so far:
+{history_text}
+
+The founder just said: "{user_message}"
+
+Respond in character as {shark['name']}. Be sharp, relevant, and true to your personality.
+Ask follow-up questions if needed. Keep under 120 words."""
+
+    try:
+        response = gemini_model.generate_content(prompt)
+        return response.text
+    except Exception as e:
+        return f"[AI Error: {str(e)}. Check your Gemini API key.]"
 
 # ── Routes ────────────────────────────────────────────────────────
 
-@app.route("/", methods=["GET"])
-def home():
-    return jsonify({"message": "SharkAI Chatbot API running", "version": "2.0"})
-
 @app.route("/session/new", methods=["POST"])
 def new_session():
-    """Creates a new chat session and returns a session ID."""
-    session_id = str(uuid.uuid4())[:8]
     data       = request.get_json() or {}
     shark_pref = data.get("shark", "namita").lower()
-
     if shark_pref not in SHARK_PERSONAS:
         shark_pref = "namita"
 
+    session_id = str(uuid.uuid4())[:8]
     SESSIONS[session_id] = {
-        "history":    [],
-        "stage":      "greeting",
-        "shark":      shark_pref,
-        "pitch_data": {}
+        "history":      [],
+        "stage":        "collecting",
+        "shark":        shark_pref,
+        "pitch_fields": {},
+        "scores":       None,
+        "chat_count":   0,
+        "current_field": "name"  # first field to collect
     }
 
     shark = SHARK_PERSONAS[shark_pref]
+    opening = f"{shark['greeting']}\n\nFirst — {FIELD_QUESTIONS['name']}"
+
     return jsonify({
-        "session_id":  session_id,
-        "shark":       shark["name"],
-        "opening":     shark["greeting"],
-        "shark_style": shark["style"]
+        "session_id": session_id,
+        "shark":      shark["name"],
+        "opening":    opening,
     })
+
 
 @app.route("/chat", methods=["POST"])
 def chat():
-    """Main chat endpoint — receives message, returns response."""
-    data       = request.get_json()
-
+    data = request.get_json()
     if not data:
         return jsonify({"error": "No data sent."}), 400
 
-    session_id  = data.get("session_id", "")
+    session_id   = data.get("session_id", "")
     user_message = data.get("message", "").strip()
 
     if not session_id or session_id not in SESSIONS:
-        return jsonify({"error": "Invalid session. Call /session/new first."}), 400
-
+        return jsonify({"error": "Invalid session."}), 400
     if not user_message:
-        return jsonify({"error": "Message cannot be empty."}), 400
+        return jsonify({"error": "Empty message."}), 400
 
-    # Save user message to history
-    SESSIONS[session_id]["history"].append({
-        "role":    "user",
-        "content": user_message
-    })
+    session   = SESSIONS[session_id]
+    shark_key = session["shark"]
+    shark     = SHARK_PERSONAS[shark_key]
+    stage     = session["stage"]
+    fields    = session["pitch_fields"]
 
-    # Generate response
-    response = generate_chat_response(session_id, user_message)
+    # Save user message
+    session["history"].append({"role": "user", "content": user_message})
 
-    # Save bot response to history
-    SESSIONS[session_id]["history"].append({
-        "role":    "assistant",
-        "content": response["message"]
-    })
+    # ── STAGE: collecting fields one by one ───────────────────────
+    if stage == "collecting":
+        current_field = session["current_field"]
 
-    # Trim history to last 20 messages
-    SESSIONS[session_id]["history"] = SESSIONS[session_id]["history"][-20:]
+        # Save the answer to the current field
+        fields[current_field] = user_message
 
-    return jsonify(response)
+        # Find next missing field
+        next_field = None
+        for f in REQUIRED_FIELDS:
+            if f not in fields:
+                next_field = f
+                break
 
-@app.route("/chat/history/<session_id>", methods=["GET"])
-def get_history(session_id):
-    """Returns full conversation history for a session."""
-    if session_id not in SESSIONS:
-        return jsonify({"error": "Session not found."}), 404
-    return jsonify({
-        "history": SESSIONS[session_id]["history"],
-        "stage":   SESSIONS[session_id]["stage"],
-        "shark":   SESSIONS[session_id].get("shark", "namita")
-    })
+        if next_field:
+            # Ask the next field question, with a brief shark-flavoured ack
+            acks = {
+                "ashneer": ["Theek hai.", "Haan.", "Samjha.", "Noted."],
+                "namita":  ["Got it.", "Thank you.", "Noted.", "Understood."],
+                "aman":    ["Nice!", "Cool.", "Got it!", "Awesome."]
+            }
+            import random
+            ack = random.choice(acks[shark_key])
+            reply = f"{ack} {FIELD_QUESTIONS[next_field]}"
+            session["current_field"] = next_field
+            session["history"].append({"role": "assistant", "content": reply})
+            session["history"] = session["history"][-30:]
 
-# Keep old /analyze endpoint working too
-@app.route("/analyze", methods=["POST"])
-def analyze():
-    data = request.get_json()
-    if not data:
-        return jsonify({"error": "No data."}), 400
-    pitch_text = data.get("pitch", "")
-    if not pitch_text or len(pitch_text.strip()) < 20:
-        return jsonify({"error": "Pitch too short."}), 400
-    return jsonify(analyze_pitch(pitch_text))
+            return jsonify({
+                "message": reply,
+                "shark":   shark["name"],
+                "stage":   "collecting",
+                "field_collected": current_field,
+                "next_field":      next_field,
+                "fields_done":     len(fields),
+                "fields_total":    len(REQUIRED_FIELDS)
+            })
+
+        else:
+            # All fields collected — run scoring + Gemini verdict
+            scores  = calculate_scores(fields)
+            session["scores"] = scores
+            session["stage"]  = "analyzing"
+
+            # Get Gemini verdict
+            ai_response = call_gemini(shark_key, fields, user_message, session["history"], mode="verdict")
+
+            session["history"].append({"role": "assistant", "content": ai_response})
+            session["history"] = session["history"][-30:]
+
+            return jsonify({
+                "message":  ai_response,
+                "shark":    shark["name"],
+                "stage":    "analyzing",
+                "scores":   scores,
+                "analysis": {
+                    "scores":                 scores,
+                    "investment_probability": scores["probability"],
+                    "decision": {
+                        "decision": "DEAL" if scores["probability"] >= 70 else ("CONDITIONAL DEAL" if scores["probability"] >= 45 else "NO DEAL"),
+                        "color":    "green" if scores["probability"] >= 70 else ("orange" if scores["probability"] >= 45 else "red")
+                    },
+                    "extracted_data": {
+                        "industry_detected": fields.get("sector", "—").upper()
+                    }
+                }
+            })
+
+    # ── STAGE: analyzing / followup — free Gemini chat ───────────
+    else:
+        session["chat_count"] += 1
+
+        # Recalculate scores with accumulated conversation context
+        # Build a richer text from all conversation
+        all_text = " ".join(fields.values()) + " " + " ".join(
+            m["content"] for m in session["history"] if m["role"] == "user"
+        )
+        updated_scores = calculate_scores({"description": all_text})
+        session["scores"] = updated_scores
+
+        ai_response = call_gemini(shark_key, fields, user_message, session["history"], mode="chat")
+
+        session["history"].append({"role": "assistant", "content": ai_response})
+        session["history"] = session["history"][-30:]
+
+        # Reset if user wants new pitch
+        if any(w in user_message.lower() for w in ["new pitch", "start over", "restart", "reset"]):
+            SESSIONS[session_id] = {
+                "history":       [],
+                "stage":         "collecting",
+                "shark":         shark_key,
+                "pitch_fields":  {},
+                "scores":        None,
+                "chat_count":    0,
+                "current_field": "name"
+            }
+            reset_msg = f"Alright, fresh start! {shark['greeting']}\n\nFirst — {FIELD_QUESTIONS['name']}"
+            return jsonify({
+                "message": reset_msg,
+                "shark":   shark["name"],
+                "stage":   "collecting",
+            })
+
+        return jsonify({
+            "message":        ai_response,
+            "shark":          shark["name"],
+            "stage":          "followup",
+            "updated_scores": updated_scores,
+        })
+
 
 if __name__ == "__main__":
-    print("=" * 50)
-    print("  SharkAI Chatbot Backend v2.0")
-    print("  Running on http://127.0.0.1:5000")
-    print("=" * 50)
+    print("=" * 55)
+    print("  SharkAI — Merged Backend")
+    print("  Open http://127.0.0.1:5000 in your browser")
+    print("  Make sure GEMINI_API_KEY is set!")
+    print("=" * 55)
     app.run(debug=True, port=5000)
