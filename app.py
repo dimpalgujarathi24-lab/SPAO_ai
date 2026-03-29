@@ -12,7 +12,7 @@ app = Flask(__name__)
 CORS(app)
 
 # ── Gemini setup ──────────────────────────────────────────────────
-genai.configure(api_key=os.environ.get("GEMINI_API_KEY", "AIzaSyBS_xWJR2_5tbaT-Rn5s2xY-WLmBNMm5k8"))
+genai.configure(api_key=os.environ.get("GEMINI_API_KEY", ")
 gemini_model = genai.GenerativeModel("gemini-2.5-flash")
 
 # ── Load dataset ──────────────────────────────────────────────────
